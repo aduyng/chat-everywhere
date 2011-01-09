@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script type="text/javascript" src="jquery.min.js"></script>
+        <script type="text/javascript" src="common.js"></script>
+
+        <script>
+            var chatEverywhere = {
+                user: null, 
+                isLoadingMessages: false,
+                cache: {},
+                clients: [],
+                init: function(){
+                    
+                    
+                    //get user info from local storage
+                    var userId = window.localStorage.getItem(LOCAL_STORAGE_INDEX_USER_ID);
+                    
+                    //id = 1 is anonymous
+                    if( userId == 'null' || userId == null){
+                        ////console.log('here');
+                        chatEverywhere.user = chatEverywhere.createAccount();
+                    }else{
+                        chatEverywhere.user = chatEverywhere.retrieveAccount(userId);
+                        
+                        if( chatEverywhere.user == null || chatEverywhere.user == 'null'){
+                            chatEverywhere.user = chatEverywhere.createAccount();
+                        }
+                    }
+                    window.localStorage.setItem(LOCAL_STORAGE_INDEX_USER_ID, chatEverywhere.user.id);
+//                    //console.log(chatEverywhere.user);
+                    
+                     //setup the event onclick on browser action
+                    chrome.browserAction.onClicked.addListener(chatEverywhere.onBrowserActionClicked);
+                    
+                    //setup listener for content script to connect 
+                    chrome.extension.onConnect.addListener(chatEverywhere.onContentScriptConnect);
+                    
+                    //periodically check for new message
+                    chatEverywhere.loadMoreMessages();
+                    
+                    
+                    
+                },
+                onBrowserActionClicked: function(tab){
+                    $(chatEverywhere.clients).each(function(index, client){
+                        if( client.port.tab.id == tab.id){
+                            client.port.postMessage({event: EVENT_BROWSER_BUTTON_CLICKED});
+                        }
+                    });
+                },
+                loadMoreMessages: function(){
+                    //console.log("LOADING MESSAGE: begin loading message");
+                    //gather the needed information
+                    var urls = [] ;
+                    ////console.log("cache values", chatEverywhere.cache);
+                    $(chatEverywhere.clients).each(function(index, client){
+                        urls.push({url: client.port.tab.url, maxMessageId: client.maxMessageId});
+                    });
+                    //console.log("LOADING MESSAGE: urls:", urls);
+                    if( urls.length > 0 ){
+                        var params = {userId: chatEverywhere.user.id, urls: urls};
+                        $.ajax({
+                            cache: false,
+                            url: URL_SERVER_API + 'get-messages',
+                            type: 'post',
+                            async: true,
+                            dataType:'json',
+                            beforeSend: function(){
+                              //chatEverywhere.isLoadingMessage= true;
+                              //console.log("LOADING MESSAGE: Before sending request");
+                            },
+                            complete: function(){
+                                //chatEverywhere.isLoadingMessage = false;
+                                //todo: handle error, sleep before recall
+                                //console.log("LOADING MESSAGE: Server returned");
+                                //setTimeout("chatEverywhere.loadMoreMessages()" , 10000); 
+                                chatEverywhere.loadMoreMessages();
+                                
+                            },
+                            data: params,
+                            success: function(resp){
+                                //TODO: handle error returned by server here
+                                //console.log("LOADING MESSAGE: server returns for loading message request:", resp);
+
+                                for(var i = 0; i < resp.data.length; i++){
+                                    chatEverywhere.notifyContentScriptNewMessages(resp.data[i]);
+                                };
+
+                                ////console.log(chatEverywhere.cache);
+                            }
+
+                        });
+                    }else{
+                        //console.log("LOADING MESSAGE: No urls, sleep...");
+                        setTimeout("chatEverywhere.loadMoreMessages()" , 1000); 
+                    }
+                },
+                notifyContentScriptNewMessages: function(record){
+                    $(chatEverywhere.clients).each(function(index, client){
+                        if( client.port.tab.url == record.url && record.messages.length > 0){
+                            //console.log("notify client with port: " + client.port.portId_);
+                            client.port.postMessage({event: EVENT_NEW_MESSAGES, data: record});
+                            
+                            chatEverywhere.clients[index].maxMessageId = record.maxMessageId;
+                        }
+                        
+                        //console.log("max message id of port (" + client.port.portId_ + ') is ' + chatEverywhere.clients[index].maxMessageId);
+                    });
+                },
+                retrieveAccount: function(userId){
+                    var user = null; 
+                    //console.log(URL_SERVER_API + 'get-account');
+                    $.ajax({
+                        cache: false,
+                        url: URL_SERVER_API + 'get-account',
+                        type: 'post',
+                        dataType:'json',
+                        async: false,
+                        data: {userId: userId},
+                        success: function(resp){
+                            
+                            //TODO: handle error returned by server here
+                            //console.log(resp.message);
+                            
+                            user = resp.user; 
+                        },
+                        error:function (xhr, ajaxOptions, thrownError){
+                            //console.log(xhr, ajaxOptions, thrownError);
+                        }  
+                    
+                    });
+                    //                    //console.log(user);
+                    return user; 
+                },
+                createAccount: function(){
+                    var user = null; 
+                    //console.log(URL_SERVER_API + 'create-account');
+                    $.ajax({
+                        cache: false,
+                        url: URL_SERVER_API + 'create-account',
+                        type: 'post',
+                        async: false,
+                        data: {},
+                        dataType:'json',
+                        success: function(resp){
+                            //console.log(resp);
+                            //TODO: handle error returned by server here
+                            //console.log(resp.message);
+                            
+                            user = resp.user; 
+                        },
+                        error:function (xhr, ajaxOptions, thrownError){
+                            //console.log(xhr, ajaxOptions, thrownError);
+                        }  
+                    
+                    });
+                    //                    //console.log(user);
+                    return user; 
+                },
+                onContentScriptConnect: function(port){
+                    //initialize event handlers
+                    port.onMessage.addListener(chatEverywhere.onContentScriptPostMessage);
+                    
+                    port.onDisconnect.addListener(chatEverywhere.onContentScriptDisconnect);
+                    //console.log("content script connected. port id: " + port.portId_);
+//                    return;
+                    var client = {
+                        port: port,
+                        maxMessageId: 0
+                    }
+                    
+                    chatEverywhere.clients.push(client);
+
+                    var params = {
+                        userId: chatEverywhere.user.id, 
+                        url: port.tab.url, 
+                        urlName: port.tab.title,
+                        isConnect: true
+                    }
+
+                    $.ajax({
+                        cache: false,
+                        url: URL_SERVER_API + 'update-status',
+                        type: 'post',
+                        async: true,
+                        data: params,
+                        dataType:'json',
+                        success: function(resp){
+                            //TODO: handle error returned by server here
+                            //console.log(resp.message);
+                        }
+                    });
+                    
+                    
+                    //return user info to content script
+                    port.postMessage({event: EVENT_USER_INFO, user: chatEverywhere.user});
+                },
+                
+                onContentScriptDisconnect: function(port){
+                    //console.log("content script disconnected. port id: " + port.portId_);
+                    ////console.log('before grep ', chatEverywhere.clients);
+                    chatEverywhere.clients = $.grep(chatEverywhere.clients, function(client){
+                        return client.port.portId_ != port.portId_;
+                    });
+            
+                },
+                onContentScriptPostMessage: function(msg){
+                    //console.log("content script send and event" + msg.event);
+                    switch ( msg.event) {
+                        case EVENT_CONTENT_SEND_MESSAGE:
+                            $.ajax({
+                                cache: false,
+                                url: URL_SERVER_API + 'post-message',
+                                type: 'post',
+                                async: true,
+                                dataType:'json',
+                                data: {userId: chatEverywhere.user.id, url: msg.url, message: msg.message},
+                                success: function(resp){                            
+                                    //console.log(resp.message);
+                                    //TODO: handle error returned by server here
+                                    //chatEverywhere.loadMoreMessages();
+                                }
+                            });
+                            
+                            break;
+                        case EVENT_CONTENT_UPDATE_PROFILE: 
+                            chatEverywhere.updateProfile({userId: chatEverywhere.user.id, name: msg.name});
+                            break;
+                    }
+                },
+                updateProfile: function(params){
+//                    //console.log(params);
+                    $.ajax({
+                        cache: false,
+                        url: URL_SERVER_API + 'update-profile',
+                        type: 'post',
+                        async: false,
+                        data: {userId: params.userId, name: params.name},
+                        dataType:'json',
+                        success: function(resp){                            
+                            //TODO: handle error returned by server here
+                            //console.log(resp);
+                        }
+                    });
+                }
+            }
+           
+                    
+            chatEverywhere.init();
+        </script>
+    </head>
+</html>
