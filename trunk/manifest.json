@@ -1,0 +1,26 @@
+{
+  "name": "Chat Everywhere (BETA)" ,
+  "description": "Communicate with people viewing the same website",
+  "version": "1.0.4.1",
+  "background_page": "background.html",
+  "icons": { "16": "icon16.png",
+           "48": "icon48.png",
+          "128": "icon128.png" },
+  "content_scripts": [
+    {
+      "matches": [
+          "http://*/*",
+          "https://*/*" 
+      ],
+      "js": ["jquery.min.js", "jquery-ui.min.js", "common.js", "content-script.js"],
+      "run_at":"document_end"
+    }
+  ],
+  "permissions": [
+    "tabs", "http://chateverywhere.net/*"
+  ],
+  "browser_action": {
+    "default_icon": "icon19.png",
+    "default_title": "Click to show/hide chat window"
+  }
+}
