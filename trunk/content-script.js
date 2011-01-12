@@ -255,10 +255,18 @@ var chatEverywhere = {
                     chatEverywhere.selfElement.hide();
                     chatEverywhere.isVisible = false;
                 }else{
+                    chatEverywhere.switchTitleStopSignal = true;
                     chatEverywhere.selfElement.show();
+                    chatEverywhere.chatElement.inputElement.focus();
                     chatEverywhere.isVisible = true;
                 }
                 chatEverywhere.scrollToEndOfMessages();
+                
+                break;
+                
+            case EVENT_TAB_CHANGED:
+                chatEverywhere.switchTitleStopSignal = true;
+                
                 break;
            case EVENT_USER_INFO:
                chatEverywhere.user = msg.user; 
