@@ -6,6 +6,8 @@ const EVENT_CONTENT_QUERY_MESSAGES = 'content script query for message';
 const EVENT_NEW_MESSAGES = 'background notities new messages';
 const EVENT_BROWSER_BUTTON_CLICKED = "browser button clicked";
 const EVENT_USER_INFO = "background send user info";
+const EVENT_TAB_CHANGED = 'New tab selected';
+
 //local storage indexes
 const LOCAL_STORAGE_INDEX_USER_ID = 'user-id';
 

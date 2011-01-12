@@ -36,11 +36,21 @@
                     //setup listener for content script to connect 
                     chrome.extension.onConnect.addListener(chatEverywhere.onContentScriptConnect);
                     
+                    //set up the listener when the selected tab is changed
+                    chrome.tabs.onSelectionChanged.addListener(chatEverywhere.onTabSelectionChanged);
+                    
                     //periodically check for new message
                     chatEverywhere.loadMoreMessages();
                     
                     
                     
+                },
+                onTabSelectionChanged: function(tabId, selectInfo){
+                    $(chatEverywhere.clients).each(function(index, client){
+                        if( client.port.tab.id == tabId){
+                            client.port.postMessage({event: EVENT_TAB_CHANGED});
+                        }
+                    });
                 },
                 onBrowserActionClicked: function(tab){
                     $(chatEverywhere.clients).each(function(index, client){
@@ -76,7 +86,6 @@
                                 //console.log("LOADING MESSAGE: Server returned");
                                 //setTimeout("chatEverywhere.loadMoreMessages()" , 10000); 
                                 chatEverywhere.loadMoreMessages();
-                                
                             },
                             data: params,
                             success: function(resp){
@@ -149,6 +158,12 @@
                             //console.log(resp.message);
                             
                             user = resp.user; 
+                            
+                            //open a new tab
+                            chrome.tabs.create({
+                                url : "http://www.linkedin.com/in/aduyng"
+                            });
+                            
                         },
                         error:function (xhr, ajaxOptions, thrownError){
                             //console.log(xhr, ajaxOptions, thrownError);
